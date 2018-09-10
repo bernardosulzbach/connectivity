@@ -1,0 +1,5 @@
+.idea/
+build/
+curlpp/
+dependencies/
+cmake-build-debug/

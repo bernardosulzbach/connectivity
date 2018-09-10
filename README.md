@@ -1,2 +1,2 @@
-# connectivity
-A network connectivity monitor
+# Connectivity
+A network connectivity monitor.

@@ -16,8 +16,15 @@ using U64 = std::uint64_t;
 
 static const char *filename = "records.bin";
 static const char *url = "http://example.com";
+static const U64 samplingInterval = 30;
 
 enum class Result : U16 { Undefined = 0, Success = 1, Failure = 2 };
+
+struct Period {
+  std::string name;
+  U64 duration;
+  Period(std::string name, U64 duration) : name(name), duration(duration) {}
+};
 
 struct Record {
   U64 timestamp{};
@@ -36,13 +43,23 @@ std::istream &operator>>(std::istream &is, Record &record) {
   return is;
 }
 
-std::string to_string(double value, int digits) {
+std::string padString(std::string string, size_t digits) {
+  if (string.size() >= digits) return string;
+  std::string result;
+  size_t required = digits - string.size();
+  for (size_t i = 0; i < required; i++) result += ' ';
+  result += string;
+  return result;
+}
+
+std::string toString(double value, int digits) {
   std::stringstream ss;
   ss << std::fixed << std::setprecision(digits) << value;
   return ss.str();
 }
 
 int main(int argc, char **argv) {
+  std::vector<Period> periods = {Period{"1H", 60 * 60}, Period{"4H", 4 * 60 * 60}, Period{"1D", 24 * 60 * 60}};
   if (argc > 1 && std::string(argv[1]) == "--dump") {
     std::ifstream file(filename, std::ios::binary);
     Record record;
@@ -53,15 +70,26 @@ int main(int argc, char **argv) {
   }
   if (argc > 1 && std::string(argv[1]) == "--stats") {
     std::ifstream file(filename, std::ios::binary);
-    Record record;
-    U64 records = 0;
-    U64 successes = 0;
-    while (file >> record) {
-      records++;
-      if (record.result == Result::Success) successes++;
+    std::vector<Record> records;
+    {
+      Record record;
+      while (file >> record) records.push_back(record);
     }
-    std::cout << "Records   " << records << '\n';
-    std::cout << "Uptime    " << to_string(100.0 * successes / static_cast<double>(records), 3) << '%' << '\n';
+    std::cout << "Records " << padString(std::to_string(records.size()), 16) << '\n';
+    for (auto period : periods) {
+      U64 start = std::time(nullptr) - period.duration;
+      U64 periodSamples = period.duration / samplingInterval;
+      U64 effectiveSamples = 0;
+      U64 successes = 0;
+      for (auto record : records) {
+        if (record.timestamp >= start) {
+          effectiveSamples++;
+          if (record.result == Result::Success) successes++;
+        }
+      }
+      std::cout << "Coverage (" << period.name << ")  " << padString(toString(100.0 * effectiveSamples / static_cast<double>(periodSamples), 5), 3 + 1 + 5) << '\n';
+      std::cout << "Uptime   (" << period.name << ")  " << padString(toString(100.0 * successes / static_cast<double>(effectiveSamples), 5), 3 + 1 + 5) << '\n';
+    }
     return 0;
   }
   std::ofstream file(filename, std::ios::binary | std::ios_base::app);
@@ -85,7 +113,7 @@ int main(int argc, char **argv) {
     }
     file << record;
     file.flush();
-    std::this_thread::sleep_for(std::chrono::milliseconds(30 * 1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(samplingInterval * 1000));
   }
   return 0;
 }

@@ -43,7 +43,7 @@ std::istream &operator>>(std::istream &is, Record &record) {
   return is;
 }
 
-std::string padString(std::string string, size_t digits) {
+std::string padString(const std::string &string, size_t digits) {
   if (string.size() >= digits) return string;
   std::string result;
   size_t required = digits - string.size();
@@ -58,8 +58,30 @@ std::string toString(double value, int digits) {
   return ss.str();
 }
 
+void run(const std::string &filename) {
+  Record record;
+  record.timestamp = std::time(nullptr);
+  try {
+    // That's all that is needed to do cleanup of used resources (RAII style).
+    curlpp::Cleanup cleanup;
+    // Our request to be sent.
+    curlpp::Easy request;
+    // Set the URL.
+    std::stringstream ss;
+    ss << curlpp::options::Url(url);
+    record.result = Result::Success;
+  } catch (curlpp::RuntimeError &e) {
+    record.result = Result::Failure;
+  } catch (curlpp::LogicError &e) {
+    record.result = Result::Failure;
+  }
+  std::ofstream file(filename, std::ios::binary | std::ios_base::app);
+  file << record;
+  file.flush();
+}
+
 int main(int argc, char **argv) {
-  std::vector<Period> periods = {Period{"1H", 60 * 60}, Period{"4H", 4 * 60 * 60}, Period{"1D", 24 * 60 * 60}};
+  std::vector<Period> periods = {Period{"1H", 60 * 60}, Period{"4H", 4 * 60 * 60}, Period{"1D", 24 * 60 * 60}, Period{"1W", 7 * 24 * 60 * 60}};
   if (argc > 1 && std::string(argv[1]) == "--dump") {
     std::ifstream file(filename, std::ios::binary);
     Record record;
@@ -92,27 +114,10 @@ int main(int argc, char **argv) {
     }
     return 0;
   }
-  std::ofstream file(filename, std::ios::binary | std::ios_base::app);
   bool running = true;
   while (running) {
-    Record record;
-    record.timestamp = std::time(nullptr);
-    try {
-      // That's all that is needed to do cleanup of used resources (RAII style).
-      curlpp::Cleanup cleanup;
-      // Our request to be sent.
-      curlpp::Easy request;
-      std::stringstream ss;
-      // Set the URL.
-      ss << curlpp::options::Url(url);
-      record.result = Result::Success;
-    } catch (curlpp::RuntimeError &e) {
-      record.result = Result::Failure;
-    } catch (curlpp::LogicError &e) {
-      record.result = Result::Failure;
-    }
-    file << record;
-    file.flush();
+    std::thread helper(run, filename);
+    helper.detach();
     std::this_thread::sleep_for(std::chrono::milliseconds(samplingInterval * 1000));
   }
   return 0;

@@ -10,5 +10,6 @@ include_directories(curlpp/include)
 link_directories(curlpp/build/)
 
 add_executable(connectivity main.cpp)
-target_link_libraries(connectivity ${CURL_LIBRARIES})
 target_link_libraries(connectivity curlpp)
+target_link_libraries(connectivity pthread)
+target_link_libraries(connectivity ${CURL_LIBRARIES})

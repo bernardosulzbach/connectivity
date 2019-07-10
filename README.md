@@ -10,6 +10,10 @@ The monitoring is done through periodic HTTP requests to a user-specified endpoi
 
 Ping and similar diagnostic tools are not use because the network configuration may treat those protocols in a different way than it would treat HTTP requests, and we are not interested in learning whether we can ping an endpoint.
 
+## Building
+
+Run the preparation script before building. It will fetch [cURLpp, a C++ wrapper for libcURL](https://github.com/jpbarrette/curlpp).
+
 ## Usage
 
 ```

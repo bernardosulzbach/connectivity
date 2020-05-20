@@ -66,8 +66,6 @@ void run(const std::string &filename, const std::string &url) {
   Record record;
   record.timestamp = std::time(nullptr);
   try {
-    // That's all that is needed to do cleanup of used resources (RAII style).
-    curlpp::Cleanup cleanup;
     // Our request to be sent.
     curlpp::Easy request;
     // Set the URL.
@@ -161,6 +159,8 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
 }
 
 int main(int argc, char **argv) {
+  // That's all that is needed to do cleanup of used resources (RAII style).
+  curlpp::Cleanup cleanup;
   std::vector<std::string> arguments;
   for (int i = 1; i < argc; i++) {
     arguments.emplace_back(argv[i]);

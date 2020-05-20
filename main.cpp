@@ -2,6 +2,7 @@
 #include <curlpp/Options.hpp>
 #include <curlpp/cURLpp.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -88,6 +89,19 @@ void printUsage() {
   std::cout << "Actions are --dump, --stats, --monitor <URL>." << '\n';
 }
 
+void handleUserInput(std::atomic<bool> &running) {
+  std::string inputLine;
+  std::cout << "Enter " << '"' << "stop" << '"' << " to stop the application correctly." << '\n' << "> ";
+  while (running && std::getline(std::cin, inputLine)) {
+    if (inputLine == "stop") {
+      std::cout << "The application will stop within the next " << RequestInterval.count() << " second(s)." << '\n';
+      running = false;
+    } else {
+      std::cout << "Unrecognized command." << '\n' << "> ";
+    }
+  }
+}
+
 void actionDispatcher(const std::vector<std::string> &arguments) {
   std::vector<Period> periods = {Period{"1H", 60 * 60}, Period{"4H", 4 * 60 * 60}, Period{"1D", 24 * 60 * 60}, Period{"1W", 7 * 24 * 60 * 60}};
   if (arguments.size() < 2) {
@@ -135,7 +149,10 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
     }
     const auto url = arguments[2];
     std::cout << "Monitoring " << url << " and updating " << filename << "." << '\n';
-    while (true) {
+    std::atomic<bool> running = true;
+    std::thread userInputThread(handleUserInput, std::ref(running));
+    userInputThread.detach();
+    while (running) {
       std::thread helper(run, filename, url);
       helper.detach();
       std::this_thread::sleep_for(RequestInterval);

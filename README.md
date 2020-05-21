@@ -19,6 +19,15 @@ Use: ./connectivity-monitor <FILENAME> <ACTION> [URL]
 
 The file format is a series of lines, each line containing information about one request.
 
+```
+2020-05-21T10:11:30Z 200 300017
+2020-05-21T10:12:00Z 200 308442
+2020-05-21T10:12:30Z 200 300411
+2020-05-21T10:13:00Z 200 297926
+2020-05-21T10:13:30Z 200 298180
+2020-05-21T10:14:00Z 200 292135
+```
+
 Each line has a ISO 8601 timestamp (as 20 UTF-8 characters), optionally followed by the HTTP response code.
 If the response code is present, it may be followed by the number of microseconds the request took.
 

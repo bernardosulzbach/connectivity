@@ -21,3 +21,7 @@ The file format is a series of lines, each line containing information about one
 
 Each line has a ISO 8601 timestamp (as 20 UTF-8 characters), optionally followed by the HTTP response code.
 If the response code is present, it may be followed by the number of microseconds the request took.
+
+## License
+
+This program is licensed under the BSD 3-Clause License. See the provided LICENSE file for more details.

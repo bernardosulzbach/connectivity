@@ -1,4 +1,5 @@
 #include <curlpp/Easy.hpp>
+#include <curlpp/Infos.hpp>
 #include <curlpp/Options.hpp>
 #include <curlpp/cURLpp.hpp>
 
@@ -7,22 +8,21 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <thread>
-#include <type_traits>
 #include <utility>
 
 using U16 = std::uint16_t;
+using U32 = std::uint32_t;
 using U64 = std::uint64_t;
 
 using F32 = float;
 
+using UnixTime = U64;
+
 constexpr static std::chrono::duration<F32> RequestInterval{30.0f};
 
 constexpr static auto DefaultCommand = "./connectivity-monitor";
-
-enum class Result : U16 { Undefined = 0, Success = 1, Failure = 2 };
 
 struct Period {
   std::string name;
@@ -30,21 +30,75 @@ struct Period {
   Period(std::string name, U64 duration) : name(std::move(name)), duration(duration) {}
 };
 
-struct Record {
-  U64 timestamp{};
-  Result result{};
-};
-
-std::ostream &operator<<(std::ostream &os, const Record &record) {
-  os.write(reinterpret_cast<const char *>(&record.timestamp), sizeof(record.timestamp));
-  os.write(reinterpret_cast<const char *>(&record.result), sizeof(record.result));
-  return os;
+UnixTime unixTimeFromIsoTimestamp(const std::string &timestamp) {
+  if (timestamp.size() != 20) {
+    throw std::invalid_argument("Input does not have 20 characters and could not be converted to Unix time.");
+  }
+  std::tm timeBuffer{};
+  std::istringstream ss(timestamp);
+  ss >> std::get_time(&timeBuffer, "%Y-%m-%dT%H:%M:%S%z");
+  // std::mktime expects local time, so we must offset it to UTC.
+  // Find the time_t of epoch, it is 0 on UTC, but timezone elsewhere.
+  std::tm epoch{};
+  epoch.tm_mday = 1;
+  epoch.tm_year = 70;
+  // Now we are ready to convert tm to time_t in UTC.
+  // This "hack" was taken from https://stackoverflow.com/a/60954178/3271844.
+  return std::mktime(&timeBuffer) - std::mktime(&epoch);
 }
 
-std::istream &operator>>(std::istream &is, Record &record) {
-  is.read(reinterpret_cast<char *>(&record.timestamp), sizeof(record.timestamp));
-  is.read(reinterpret_cast<char *>(&record.result), sizeof(record.result));
-  return is;
+std::string unixTimeToIsoTimestamp(const UnixTime unixTime) {
+  std::array<char, sizeof("1970-01-01T00:00:00Z")> buffer{};
+  const auto time = static_cast<std::time_t>(unixTime);
+  std::strftime(buffer.data(), buffer.size(), "%FT%TZ", std::gmtime(&time));
+  return std::string(buffer.data());
+}
+
+std::string getIsoTimestamp() { return unixTimeToIsoTimestamp(std::time(nullptr)); }
+
+class Record {
+  UnixTime timestamp{};
+  std::optional<U16> httpResponseCode{};
+  std::optional<U32> microseconds{};
+
+ public:
+  explicit Record(UnixTime timestamp) : timestamp(timestamp) {}
+
+  [[nodiscard]] UnixTime getTimestamp() const { return timestamp; }
+  void setTimestamp(UnixTime newTimestamp) { timestamp = newTimestamp; }
+
+  [[nodiscard]] const std::optional<U16> &getHttpResponseCode() const { return httpResponseCode; }
+  void setHttpResponseCode(const std::optional<U16> &newHttpResponseCode) { httpResponseCode = newHttpResponseCode; }
+
+  [[nodiscard]] const std::optional<U32> &getMicroseconds() const { return microseconds; }
+  void setMicroseconds(const std::optional<U32> &newMicroseconds) { microseconds = newMicroseconds; }
+
+  void dump(std::ostream &stream) {
+    stream << unixTimeToIsoTimestamp(timestamp);
+    if (httpResponseCode) {
+      stream << ' ' << httpResponseCode.value();
+      if (microseconds) {
+        stream << ' ' << microseconds.value();
+      }
+    }
+    stream << '\n';
+  }
+};
+
+Record recordFromString(const std::string &line) {
+  std::stringstream stream(line);
+  std::string timestamp;
+  stream >> timestamp;
+  Record record(unixTimeFromIsoTimestamp(timestamp));
+  U16 httpResponseCode{};
+  if (stream >> httpResponseCode) {
+    record.setHttpResponseCode(httpResponseCode);
+    U32 microseconds{};
+    if (stream >> microseconds) {
+      record.setMicroseconds(microseconds);
+    }
+  }
+  return record;
 }
 
 std::string padString(const std::string &string, size_t digits) {
@@ -63,22 +117,28 @@ std::string toString(double value, int digits) {
 }
 
 void run(const std::string &filename, const std::string &url) {
-  Record record;
-  record.timestamp = std::time(nullptr);
+  const auto startingTimePoint = std::chrono::steady_clock::now();
+  Record record(std::time(nullptr));
+  // Our request to be sent.
+  curlpp::Easy request;
   try {
-    // Our request to be sent.
-    curlpp::Easy request;
     // Set the URL.
-    std::stringstream ss;
-    ss << curlpp::options::Url(url);
-    record.result = Result::Success;
+    request.setOpt(curlpp::options::Url(url));
+    request.setOpt(curlpp::options::Verbose(false));
+    std::stringstream response;
+    request.setOpt(curlpp::options::WriteStream(&response));
+    request.perform();
+    const auto responseCode = curlpp::infos::ResponseCode::get(request);
+    record.setHttpResponseCode(responseCode);
   } catch (curlpp::RuntimeError &e) {
-    record.result = Result::Failure;
+    const auto responseCode = curlpp::infos::ResponseCode::get(request);
+    record.setHttpResponseCode(responseCode);
   } catch (curlpp::LogicError &e) {
-    record.result = Result::Failure;
   }
-  std::ofstream file(filename, std::ios::binary | std::ios_base::app);
-  file << record;
+  const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startingTimePoint);
+  record.setMicroseconds(duration.count());
+  std::ofstream file(filename, std::ios_base::app);
+  record.dump(file);
   file.flush();
 }
 
@@ -109,18 +169,27 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
   const auto filename = arguments[0];
   const auto action = arguments[1];
   if (action == "--dump") {
-    std::ifstream file(filename, std::ios::binary);
-    Record record;
-    while (file >> record) {
-      std::cout << record.timestamp << ' ' << static_cast<std::underlying_type<Result>::type>(record.result) << '\n';
+    std::ifstream file(filename);
+    std::string line;
+    while (std::getline(file, line)) {
+      const auto record = recordFromString(line);
+      std::cout << unixTimeToIsoTimestamp(record.getTimestamp());
+      if (record.getHttpResponseCode()) {
+        std::cout << ' ' << record.getHttpResponseCode().value();
+        if (record.getMicroseconds()) {
+          std::cout << ' ' << record.getMicroseconds().value();
+        }
+      }
+      std::cout << '\n';
     }
   }
   if (action == "--stats") {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(filename);
+    std::string line;
     std::vector<Record> records;
-    {
-      Record record;
-      while (file >> record) records.push_back(record);
+    while (std::getline(file, line)) {
+      const auto record = recordFromString(line);
+      records.push_back(record);
     }
     std::cout << "Records " << padString(std::to_string(records.size()), 16) << '\n';
     for (const auto &period : periods) {
@@ -129,10 +198,15 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
       U64 effectiveSamples = 0;
       U64 successes = 0;
       for (auto record : records) {
-        if (record.timestamp >= start) {
+        if (record.getTimestamp() >= start) {
           effectiveSamples++;
-          if (record.result == Result::Success) {
-            successes++;
+          if (record.getHttpResponseCode()) {
+            const auto code = record.getHttpResponseCode().value();
+            // This skips any validation of the response code.
+            // Maybe not all 1xx, 2xx, 3xx are "successes" for some applications.
+            if (code >= 100 && code < 400) {
+              successes++;
+            }
           }
         }
       }
@@ -146,7 +220,7 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
       std::exit(EXIT_FAILURE);
     }
     const auto url = arguments[2];
-    std::cout << "Monitoring " << url << " and updating " << filename << "." << '\n';
+    std::cout << "Monitoring " << url << " and updating " << filename << " every " << RequestInterval.count() << " seconds." << '\n';
     std::atomic<bool> running = true;
     std::thread userInputThread(handleUserInput, std::ref(running));
     userInputThread.detach();

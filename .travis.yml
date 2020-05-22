@@ -1,0 +1,12 @@
+language: cpp
+
+addons:
+  apt:
+    packages:
+      - cmake
+
+install: bash prepare.sh
+
+compiler:
+  - clang
+  - gcc

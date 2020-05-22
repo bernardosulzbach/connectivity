@@ -116,6 +116,8 @@ std::string toString(double value, int digits) {
   return ss.str();
 }
 
+U32 getTimeoutInSeconds() { return RequestInterval.count() / 2; }
+
 void run(const std::string &filename, const std::string &url) {
   const auto startingTimePoint = std::chrono::steady_clock::now();
   Record record(std::time(nullptr));
@@ -127,6 +129,7 @@ void run(const std::string &filename, const std::string &url) {
     request.setOpt(curlpp::options::Verbose(false));
     std::stringstream response;
     request.setOpt(curlpp::options::WriteStream(&response));
+    request.setOpt(curlpp::options::Timeout(getTimeoutInSeconds()));
     request.perform();
     const auto responseCode = curlpp::infos::ResponseCode::get(request);
     record.setHttpResponseCode(responseCode);
@@ -221,6 +224,9 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
     }
     const auto url = arguments[2];
     std::cout << "Monitoring " << url << " and updating " << filename << " every " << RequestInterval.count() << " seconds." << '\n';
+    if (getTimeoutInSeconds()) {
+      std::cout << "Requests time-out after " << getTimeoutInSeconds() << " seconds." << '\n';
+    }
     std::atomic<bool> running = true;
     std::thread userInputThread(handleUserInput, std::ref(running));
     userInputThread.detach();

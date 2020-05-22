@@ -5,8 +5,14 @@ addons:
     packages:
       - cmake
 
-install: bash prepare.sh
-
 compiler:
   - clang
   - gcc
+
+before_install:
+  - bash prepare.sh
+
+script:
+  - mkdir build && cd build || exit
+  - cmake .. -DCMAKE_BUILD_TYPE=Debug
+  - make

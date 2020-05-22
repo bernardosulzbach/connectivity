@@ -1,5 +1,7 @@
 # Connectivity monitor
 
+[![Build Status](https://travis-ci.org/bernardosulzbach/connectivity-monitor.svg?branch=master)](https://travis-ci.org/bernardosulzbach/connectivity-monitor)
+
 A network connectivity monitor written in C++ 17.
 
 Run the preparation script before building. The main thing it does is cloning [this C++ wrapper around libcURL](https://github.com/jpbarrette/curlpp).
@@ -33,7 +35,7 @@ If the response code is present, it may be followed by the number of microsecond
 
 ## Supported platforms
 
-This program should work on any modern OS and architecture. However, it is only tested on Linux (x64). Please file an issue if it is not working in your platform.
+This program should work on any modern OS and architecture. However, it is only tested on Ubuntu Linux (x64). Please file an issue if it is not working in your platform.
 
 ## License
 

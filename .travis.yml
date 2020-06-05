@@ -5,6 +5,7 @@ addons:
   apt:
     packages:
       - cmake
+      - clang-tidy
 
 compiler:
   - clang

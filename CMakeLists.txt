@@ -4,6 +4,9 @@ project(connectivity-monitor)
 
 set(CMAKE_CXX_STANDARD 17)
 
+set(CMAKE_CXX_CLANG_TIDY clang-tidy -checks=-*,readability-*,modernize-use-auto
+                         -fix)
+
 include(FindCURL)
 find_package(CURL REQUIRED)
 

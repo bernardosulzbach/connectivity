@@ -20,7 +20,7 @@ using F32 = float;
 
 using UnixTime = U64;
 
-constexpr static std::chrono::duration<F32> RequestInterval{30.0f};
+constexpr static std::chrono::duration<F32> RequestInterval{30.0F};
 
 constexpr static auto DefaultCommand = "./connectivity-monitor";
 
@@ -102,10 +102,14 @@ Record recordFromString(const std::string &line) {
 }
 
 std::string padString(const std::string &string, size_t digits) {
-  if (string.size() >= digits) return string;
+  if (string.size() >= digits) {
+    return string;
+  }
   std::string result;
   size_t required = digits - string.size();
-  for (size_t i = 0; i < required; i++) result += ' ';
+  for (size_t i = 0; i < required; i++) {
+    result += ' ';
+  }
   result += string;
   return result;
 }
@@ -224,7 +228,7 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
     }
     const auto url = arguments[2];
     std::cout << "Monitoring " << url << " and updating " << filename << " every " << RequestInterval.count() << " seconds." << '\n';
-    if (getTimeoutInSeconds()) {
+    if (getTimeoutInSeconds() != 0U) {
       std::cout << "Requests time-out after " << getTimeoutInSeconds() << " seconds." << '\n';
     }
     std::atomic<bool> running = true;

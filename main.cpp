@@ -19,7 +19,7 @@ using U32 = std::uint32_t;
 using U64 = std::uint64_t;
 
 using F32 = float;
-using F64 = float;
+using F64 = double;
 
 using UnixTime = U64;
 
@@ -151,7 +151,7 @@ std::string padString(const std::string &string, size_t digits) {
   return result;
 }
 
-std::string toString(double value, int digits) {
+std::string toString(F64 value, int digits) {
   std::stringstream ss;
   ss << std::fixed << std::setprecision(digits) << value;
   return ss.str();
@@ -264,8 +264,8 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
           }
         }
       }
-      std::cout << "Coverage (" << period.name << "): " << toPercentageString(effectiveSamples / static_cast<double>(periodSamples)) << '\n';
-      std::cout << "Uptime   (" << period.name << "): " << toPercentageString(successes / static_cast<double>(effectiveSamples)) << '\n';
+      std::cout << "Coverage (" << period.name << "): " << toPercentageString(effectiveSamples / static_cast<F64>(periodSamples)) << '\n';
+      std::cout << "Uptime   (" << period.name << "): " << toPercentageString(successes / static_cast<F64>(effectiveSamples)) << '\n';
     }
   }
   if (action == "--monitor") {
@@ -307,6 +307,5 @@ int main(int argc, char **argv) {
   } catch (const std::exception &exception) {
     informAboutException(exception);
   }
-
   return 0;
 }

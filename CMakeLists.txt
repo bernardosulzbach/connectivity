@@ -4,13 +4,13 @@ project(connectivity-monitor)
 
 set(CMAKE_CXX_STANDARD 17)
 
-set(CMAKE_CXX_CLANG_TIDY clang-tidy -checks=-*,readability-*,modernize-use-auto
-                         -fix)
+set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 include(FindCURL)
 find_package(CURL REQUIRED)
 
 include_directories(curlpp/include)
+include_directories(include)
 
 link_directories(curlpp/build)
 

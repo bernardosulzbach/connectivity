@@ -12,26 +12,48 @@
 #include <thread>
 #include <utility>
 
+#include <gsl/span>
+
 using U16 = std::uint16_t;
 using U32 = std::uint32_t;
 using U64 = std::uint64_t;
 
 using F32 = float;
+using F64 = float;
 
 using UnixTime = U64;
 
-constexpr static std::chrono::duration<F32> RequestInterval{30.0F};
+constexpr std::chrono::duration<F32> RequestInterval{30.0F};
 
-constexpr static auto DefaultCommand = "./connectivity-monitor";
+constexpr auto DefaultCommand = "./connectivity-monitor";
+
+constexpr auto TimestampSize = 20;
+constexpr auto FirstEpochYear = 70;
+
+constexpr auto FirstSuccessfulHttpStatusCode = 100;
+constexpr auto LastSuccessfulHttpStatusCode = 399;
+
+constexpr auto OneHourString = "1H";
+constexpr auto OneHourSeconds = 60 * 60;
+constexpr auto FourHoursString = "4H";
+constexpr auto FourHoursSeconds = 4 * OneHourSeconds;
+constexpr auto OneDayString = "1D";
+constexpr auto OneDaySeconds = 24 * OneHourSeconds;
+constexpr auto OneWeekString = "1W";
+constexpr auto OneWeekSeconds = 4 * OneDaySeconds;
+
+constexpr auto DefaultPercentageDigits = 5;
+constexpr auto DefaultPercentageStringLength = 3 + 1 + DefaultPercentageDigits + 1;
 
 struct Period {
   std::string name;
   U64 duration;
-  Period(std::string name, U64 duration) : name(std::move(name)), duration(duration) {}
+  Period(std::string name, U64 duration) : name(std::move(name)), duration(duration) {
+  }
 };
 
 UnixTime unixTimeFromIsoTimestamp(const std::string &timestamp) {
-  if (timestamp.size() != 20) {
+  if (timestamp.size() != TimestampSize) {
     throw std::invalid_argument("Input does not have 20 characters and could not be converted to Unix time.");
   }
   std::tm timeBuffer{};
@@ -41,7 +63,7 @@ UnixTime unixTimeFromIsoTimestamp(const std::string &timestamp) {
   // Find the time_t of epoch, it is 0 on UTC, but timezone elsewhere.
   std::tm epoch{};
   epoch.tm_mday = 1;
-  epoch.tm_year = 70;
+  epoch.tm_year = FirstEpochYear;
   // Now we are ready to convert tm to time_t in UTC.
   // This "hack" was taken from https://stackoverflow.com/a/60954178/3271844.
   return std::mktime(&timeBuffer) - std::mktime(&epoch);
@@ -54,7 +76,9 @@ std::string unixTimeToIsoTimestamp(const UnixTime unixTime) {
   return std::string(buffer.data());
 }
 
-std::string getIsoTimestamp() { return unixTimeToIsoTimestamp(std::time(nullptr)); }
+std::string getIsoTimestamp() {
+  return unixTimeToIsoTimestamp(std::time(nullptr));
+}
 
 class Record {
   UnixTime timestamp{};
@@ -62,16 +86,29 @@ class Record {
   std::optional<U32> microseconds{};
 
  public:
-  explicit Record(UnixTime timestamp) : timestamp(timestamp) {}
+  explicit Record(UnixTime timestamp) : timestamp(timestamp) {
+  }
 
-  [[nodiscard]] UnixTime getTimestamp() const { return timestamp; }
-  void setTimestamp(UnixTime newTimestamp) { timestamp = newTimestamp; }
+  [[nodiscard]] UnixTime getTimestamp() const {
+    return timestamp;
+  }
+  void setTimestamp(UnixTime newTimestamp) {
+    timestamp = newTimestamp;
+  }
 
-  [[nodiscard]] const std::optional<U16> &getHttpResponseCode() const { return httpResponseCode; }
-  void setHttpResponseCode(const std::optional<U16> &newHttpResponseCode) { httpResponseCode = newHttpResponseCode; }
+  [[nodiscard]] const std::optional<U16> &getHttpResponseCode() const {
+    return httpResponseCode;
+  }
+  void setHttpResponseCode(const std::optional<U16> &newHttpResponseCode) {
+    httpResponseCode = newHttpResponseCode;
+  }
 
-  [[nodiscard]] const std::optional<U32> &getMicroseconds() const { return microseconds; }
-  void setMicroseconds(const std::optional<U32> &newMicroseconds) { microseconds = newMicroseconds; }
+  [[nodiscard]] const std::optional<U32> &getMicroseconds() const {
+    return microseconds;
+  }
+  void setMicroseconds(const std::optional<U32> &newMicroseconds) {
+    microseconds = newMicroseconds;
+  }
 
   void dump(std::ostream &stream) {
     stream << unixTimeToIsoTimestamp(timestamp);
@@ -120,7 +157,9 @@ std::string toString(double value, int digits) {
   return ss.str();
 }
 
-U32 getTimeoutInSeconds() { return RequestInterval.count() / 2; }
+U32 getTimeoutInSeconds() {
+  return RequestInterval.count() / 2;
+}
 
 void run(const std::string &filename, const std::string &url) {
   const auto startingTimePoint = std::chrono::steady_clock::now();
@@ -167,8 +206,16 @@ void handleUserInput(std::atomic<bool> &running) {
   }
 }
 
+std::string toPercentageString(const F64 value) {
+  return padString(toString(100.0 * value, DefaultPercentageDigits) + "%", DefaultPercentageStringLength);
+}
+
 void actionDispatcher(const std::vector<std::string> &arguments) {
-  std::vector<Period> periods = {Period{"1H", 60 * 60}, Period{"4H", 4 * 60 * 60}, Period{"1D", 24 * 60 * 60}, Period{"1W", 7 * 24 * 60 * 60}};
+  const auto OneHour = Period{OneHourString, OneHourSeconds};
+  const auto FourHours = Period{FourHoursString, FourHoursSeconds};
+  const auto OneDay = Period{OneDayString, OneDaySeconds};
+  const auto OneWeek = Period{OneWeekString, OneWeekSeconds};
+  std::vector<Period> periods = {OneHour, FourHours, OneDay, OneWeek};
   if (arguments.size() < 2) {
     printUsage();
     std::exit(EXIT_FAILURE);
@@ -198,7 +245,7 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
       const auto record = recordFromString(line);
       records.push_back(record);
     }
-    std::cout << "Records " << padString(std::to_string(records.size()), 16) << '\n';
+    std::cout << "Record count: " << std::to_string(records.size()) << '\n';
     for (const auto &period : periods) {
       U64 start = std::time(nullptr) - period.duration;
       U64 periodSamples = period.duration / RequestInterval.count();
@@ -211,14 +258,14 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
             const auto code = record.getHttpResponseCode().value();
             // This skips any validation of the response code.
             // Maybe not all 1xx, 2xx, 3xx are "successes" for some applications.
-            if (code >= 100 && code < 400) {
+            if (code >= FirstSuccessfulHttpStatusCode && code <= LastSuccessfulHttpStatusCode) {
               successes++;
             }
           }
         }
       }
-      std::cout << "Coverage (" << period.name << ")  " << padString(toString(100.0 * effectiveSamples / static_cast<double>(periodSamples), 5), 3 + 1 + 5) << '\n';
-      std::cout << "Uptime   (" << period.name << ")  " << padString(toString(100.0 * successes / static_cast<double>(effectiveSamples), 5), 3 + 1 + 5) << '\n';
+      std::cout << "Coverage (" << period.name << "): " << toPercentageString(effectiveSamples / static_cast<double>(periodSamples)) << '\n';
+      std::cout << "Uptime   (" << period.name << "): " << toPercentageString(successes / static_cast<double>(effectiveSamples)) << '\n';
     }
   }
   if (action == "--monitor") {
@@ -242,13 +289,24 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
   }
 }
 
+void informAboutException(const std::exception &exception) {
+  std::cout << "Threw an exception." << '\n';
+  std::cout << "  " << exception.what() << '\n';
+}
+
 int main(int argc, char **argv) {
-  // That's all that is needed to do cleanup of used resources (RAII style).
-  curlpp::Cleanup cleanup;
-  std::vector<std::string> arguments;
-  for (int i = 1; i < argc; i++) {
-    arguments.emplace_back(argv[i]);
+  try {
+    // That's all that is needed to do cleanup of used resources (RAII style).
+    curlpp::Cleanup cleanup;
+    std::vector<std::string> arguments;
+    gsl::span<char *, gsl::dynamic_extent> rawArguments(argv, argc);
+    for (int i = 1; i < argc; i++) {
+      arguments.emplace_back(rawArguments[i]);
+    }
+    actionDispatcher(arguments);
+  } catch (const std::exception &exception) {
+    informAboutException(exception);
   }
-  actionDispatcher(arguments);
+
   return 0;
 }

@@ -16,5 +16,6 @@ before_install:
 
 script:
   - mkdir build && cd build || exit
-  - cmake .. -DCMAKE_BUILD_TYPE=Debug
+  - cmake -DCMAKE_BUILD_TYPE=Debug ..
+  - clang-tidy ../main.cpp
   - make

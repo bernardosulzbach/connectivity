@@ -23,7 +23,13 @@ using F64 = double;
 
 using UnixTime = U64;
 
-constexpr std::chrono::duration<F32> RequestInterval{30.0F};
+constexpr auto RequestInterval = std::chrono::seconds{30};
+constexpr auto RequestTimeout = RequestInterval / 2;
+// Assumes sleep for is accurate to 1 ms.
+// This is important to get the timing loop just right.
+constexpr auto SleepForPrecision = std::chrono::milliseconds{1};
+// This is used to prevent the CLI from taking too long to terminate.
+constexpr auto MaximumSleepForDuration = std::chrono::milliseconds{50};
 
 constexpr auto DefaultCommand = "./connectivity-monitor";
 
@@ -161,7 +167,7 @@ U32 getTimeoutInSeconds() {
   return RequestInterval.count() / 2;
 }
 
-void run(const std::string &filename, const std::string &url) {
+void probeUrl(const std::string &filename, const std::string &url) {
   const auto startingTimePoint = std::chrono::steady_clock::now();
   Record record(std::time(nullptr));
   // Our request to be sent.
@@ -176,10 +182,10 @@ void run(const std::string &filename, const std::string &url) {
     request.perform();
     const auto responseCode = curlpp::infos::ResponseCode::get(request);
     record.setHttpResponseCode(responseCode);
-  } catch (curlpp::RuntimeError &e) {
+  } catch (const curlpp::RuntimeError &e) {
     const auto responseCode = curlpp::infos::ResponseCode::get(request);
     record.setHttpResponseCode(responseCode);
-  } catch (curlpp::LogicError &e) {
+  } catch (const curlpp::LogicError &e) {
   }
   const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startingTimePoint);
   record.setMicroseconds(duration.count());
@@ -281,10 +287,25 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
     std::atomic<bool> running = true;
     std::thread userInputThread(handleUserInput, std::ref(running));
     userInputThread.detach();
+    auto nextProbeLaunch = std::chrono::steady_clock::now();
     while (running) {
-      std::thread helper(run, filename, url);
-      helper.detach();
-      std::this_thread::sleep_for(RequestInterval);
+      const auto timeForLaunch = nextProbeLaunch - std::chrono::steady_clock::now();
+      // Start by sleeping.
+      if (timeForLaunch > SleepForPrecision) {
+        // Don't sleep for more than MaximumSleepForDuration.
+        if (timeForLaunch - SleepForPrecision > MaximumSleepForDuration) {
+          std::this_thread::sleep_for(MaximumSleepForDuration);
+        } else {
+          std::this_thread::sleep_for(timeForLaunch - SleepForPrecision);
+        }
+      } else {
+        // Then busy-wait (spin lock).
+        while (nextProbeLaunch - std::chrono::steady_clock::now() > std::chrono::milliseconds{0}) {
+        }
+        std::thread probeThread(probeUrl, filename, url);
+        probeThread.detach();
+        nextProbeLaunch = nextProbeLaunch + RequestInterval;
+      }
     }
   }
 }

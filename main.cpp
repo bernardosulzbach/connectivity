@@ -23,13 +23,18 @@ using F64 = double;
 
 using UnixTime = U64;
 
-constexpr auto RequestInterval = std::chrono::seconds{30};
-constexpr auto RequestTimeout = RequestInterval / 2;
+constexpr auto RequestIntervalInMilliseconds = 30000;
+constexpr auto TimeoutInMilliseconds = 15000;
 // Assumes sleep for is accurate to 1 ms.
 // This is important to get the timing loop just right.
-constexpr auto SleepForPrecision = std::chrono::milliseconds{1};
+constexpr auto SleepForPrecisionInMilliseconds = 10;
 // This is used to prevent the CLI from taking too long to terminate.
-constexpr auto MaximumSleepForDuration = std::chrono::milliseconds{50};
+constexpr auto MaximumSleepForDurationInMilliseconds = 50;
+
+constexpr auto MillisecondsInSecond = 1000;
+
+static_assert(RequestIntervalInMilliseconds % MillisecondsInSecond == 0);
+static_assert(TimeoutInMilliseconds % MillisecondsInSecond == 0);
 
 constexpr auto DefaultCommand = "./connectivity-monitor";
 
@@ -163,10 +168,6 @@ std::string toString(F64 value, int digits) {
   return ss.str();
 }
 
-U32 getTimeoutInSeconds() {
-  return RequestInterval.count() / 2;
-}
-
 void probeUrl(const std::string &filename, const std::string &url) {
   const auto startingTimePoint = std::chrono::steady_clock::now();
   Record record(std::time(nullptr));
@@ -178,7 +179,7 @@ void probeUrl(const std::string &filename, const std::string &url) {
     request.setOpt(curlpp::options::Verbose(false));
     std::stringstream response;
     request.setOpt(curlpp::options::WriteStream(&response));
-    request.setOpt(curlpp::options::Timeout(getTimeoutInSeconds()));
+    request.setOpt(curlpp::options::Timeout(TimeoutInMilliseconds / MillisecondsInSecond));
     request.perform();
     const auto responseCode = curlpp::infos::ResponseCode::get(request);
     record.setHttpResponseCode(responseCode);
@@ -202,6 +203,7 @@ void printUsage() {
 void handleUserInput(std::atomic<bool> &running) {
   std::string inputLine;
   std::cout << "Enter " << '"' << "stop" << '"' << " to stop the application correctly." << '\n' << "> ";
+  constexpr auto RequestInterval = std::chrono::milliseconds{RequestIntervalInMilliseconds};
   while (running && std::getline(std::cin, inputLine)) {
     if (inputLine == "stop") {
       std::cout << "The application will stop within the next " << RequestInterval.count() << " second(s)." << '\n';
@@ -254,7 +256,7 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
     std::cout << "Record count: " << std::to_string(records.size()) << '\n';
     for (const auto &period : periods) {
       U64 start = std::time(nullptr) - period.duration;
-      U64 periodSamples = period.duration / RequestInterval.count();
+      U64 periodSamples = period.duration / (RequestIntervalInMilliseconds / MillisecondsInSecond);
       U64 effectiveSamples = 0;
       U64 successes = 0;
       for (auto record : records) {
@@ -280,23 +282,27 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
       std::exit(EXIT_FAILURE);
     }
     const auto url = arguments[2];
-    std::cout << "Monitoring " << url << " and updating " << filename << " every " << RequestInterval.count() << " seconds." << '\n';
-    if (getTimeoutInSeconds() != 0U) {
-      std::cout << "Requests time-out after " << getTimeoutInSeconds() << " seconds." << '\n';
-    }
+    constexpr auto requestIntervalInSeconds = RequestIntervalInMilliseconds / MillisecondsInSecond;
+    std::cout << "Monitoring " << url << " and updating " << filename << " every " << requestIntervalInSeconds << " second(s)." << '\n';
+    constexpr auto timeoutInSeconds = TimeoutInMilliseconds / MillisecondsInSecond;
+    static_assert(timeoutInSeconds != 0);
+    std::cout << "Requests time-out after " << timeoutInSeconds << " second(s)." << '\n';
     std::atomic<bool> running = true;
     std::thread userInputThread(handleUserInput, std::ref(running));
     userInputThread.detach();
+    const auto requestInterval = std::chrono::milliseconds{RequestIntervalInMilliseconds};
+    const auto sleepForPrecision = std::chrono::milliseconds{SleepForPrecisionInMilliseconds};
+    const auto maximumSleepForDuration = std::chrono::milliseconds{MaximumSleepForDurationInMilliseconds};
     auto nextProbeLaunch = std::chrono::steady_clock::now();
     while (running) {
       const auto timeForLaunch = nextProbeLaunch - std::chrono::steady_clock::now();
       // Start by sleeping.
-      if (timeForLaunch > SleepForPrecision) {
+      if (timeForLaunch > sleepForPrecision) {
         // Don't sleep for more than MaximumSleepForDuration.
-        if (timeForLaunch - SleepForPrecision > MaximumSleepForDuration) {
-          std::this_thread::sleep_for(MaximumSleepForDuration);
+        if (timeForLaunch - sleepForPrecision > maximumSleepForDuration) {
+          std::this_thread::sleep_for(maximumSleepForDuration);
         } else {
-          std::this_thread::sleep_for(timeForLaunch - SleepForPrecision);
+          std::this_thread::sleep_for(timeForLaunch - sleepForPrecision);
         }
       } else {
         // Then busy-wait (spin lock).
@@ -304,7 +310,7 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
         }
         std::thread probeThread(probeUrl, filename, url);
         probeThread.detach();
-        nextProbeLaunch = nextProbeLaunch + RequestInterval;
+        nextProbeLaunch = nextProbeLaunch + requestInterval;
       }
     }
   }

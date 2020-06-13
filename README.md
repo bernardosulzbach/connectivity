@@ -54,7 +54,7 @@ If the response code is present, it may be followed by the number of microsecond
 ## Supported platforms
 
 This program should work on any modern OS and architecture.
-However, it is only tested on Ubuntu Bionic (18.04, x64) using Clang 7.0.0 and GCC 7.4.0.
+However, it is only tested on Ubuntu Focal Fossa (20.04), CMake 3.12.4, Clang 7.0.0 and GCC 9.3.0.
 Please file an issue if it is not working in your platform.
 
 ## License

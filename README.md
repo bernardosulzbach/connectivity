@@ -34,6 +34,20 @@ The file format is a series of lines, each line containing information about one
 2020-05-21T10:14:00Z 200 292135
 ```
 
+The output of the statistics looks like the following.
+
+```
+Record count: 30817
+Coverage (1H): 100.00000%
+Uptime   (1H): 100.00000%
+Coverage (4H):  99.37500%
+Uptime   (4H): 100.00000%
+Coverage (1D):  60.86806%
+Uptime   (1D):  95.60753%
+Coverage (1W):  72.73438%
+Uptime   (1W):  99.06910%
+```
+
 Each line has a ISO 8601 timestamp (as 20 UTF-8 characters), optionally followed by the HTTP response code.
 If the response code is present, it may be followed by the number of microseconds the request took.
 

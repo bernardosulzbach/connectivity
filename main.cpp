@@ -206,7 +206,6 @@ void handleUserInput(std::atomic<bool> &running) {
   constexpr auto RequestInterval = std::chrono::milliseconds{RequestIntervalInMilliseconds};
   while (running && std::getline(std::cin, inputLine)) {
     if (inputLine == "stop") {
-      std::cout << "The application will stop within the next " << RequestInterval.count() << " second(s)." << '\n';
       running = false;
     } else {
       std::cout << "Unrecognized command." << '\n' << "> ";

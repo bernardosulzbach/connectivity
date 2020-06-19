@@ -51,7 +51,7 @@ constexpr auto FourHoursSeconds = 4 * OneHourSeconds;
 constexpr auto OneDayString = "1D";
 constexpr auto OneDaySeconds = 24 * OneHourSeconds;
 constexpr auto OneWeekString = "1W";
-constexpr auto OneWeekSeconds = 4 * OneDaySeconds;
+constexpr auto OneWeekSeconds = 7 * OneDaySeconds;
 
 constexpr auto DefaultPercentageDigits = 5;
 constexpr auto DefaultPercentageStringLength = 3 + 1 + DefaultPercentageDigits + 1;

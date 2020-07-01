@@ -38,28 +38,38 @@ static_assert(TimeoutInMilliseconds % MillisecondsInSecond == 0);
 
 constexpr auto DefaultCommand = "./connectivity-monitor";
 
+constexpr auto Indentation = "  ";
+
 constexpr auto TimestampSize = 20;
 constexpr auto FirstEpochYear = 70;
 
 constexpr auto FirstSuccessfulHttpStatusCode = 100;
 constexpr auto LastSuccessfulHttpStatusCode = 399;
 
-constexpr auto OneHourString = "1H";
-constexpr auto OneHourSeconds = 60 * 60;
-constexpr auto FourHoursString = "4H";
-constexpr auto FourHoursSeconds = 4 * OneHourSeconds;
-constexpr auto OneDayString = "1D";
-constexpr auto OneDaySeconds = 24 * OneHourSeconds;
-constexpr auto OneWeekString = "1W";
-constexpr auto OneWeekSeconds = 7 * OneDaySeconds;
+using SecondCount = U64;
+
+constexpr auto InfiniteSecondCount = std::numeric_limits<SecondCount>::max();
+
+constexpr auto OneHourString = "Last hour";
+constexpr SecondCount OneHourSeconds = 60 * 60;
+constexpr auto FourHoursString = "Last 4 hours";
+constexpr SecondCount FourHoursSeconds = 4 * OneHourSeconds;
+constexpr auto OneDayString = "Last day";
+constexpr SecondCount OneDaySeconds = 24 * OneHourSeconds;
+constexpr auto OneWeekString = "Last week";
+constexpr SecondCount OneWeekSeconds = 7 * OneDaySeconds;
+constexpr auto ThirtyDaysString = "Last 30 days";
+constexpr SecondCount ThirtyDaysSeconds = 30 * OneDaySeconds;
+constexpr auto AllTimeString = "All time";
+constexpr SecondCount AllTimeSeconds = InfiniteSecondCount;
 
 constexpr auto DefaultPercentageDigits = 5;
 constexpr auto DefaultPercentageStringLength = 3 + 1 + DefaultPercentageDigits + 1;
 
 struct Period {
   std::string name;
-  U64 duration;
-  Period(std::string name, U64 duration) : name(std::move(name)), duration(duration) {
+  SecondCount duration;
+  Period(std::string name, SecondCount duration) : name(std::move(name)), duration(duration) {
   }
 };
 
@@ -87,10 +97,6 @@ std::string unixTimeToIsoTimestamp(const UnixTime unixTime) {
   return std::string(buffer.data());
 }
 
-std::string getIsoTimestamp() {
-  return unixTimeToIsoTimestamp(std::time(nullptr));
-}
-
 class Record {
   UnixTime timestamp{};
   std::optional<U16> httpResponseCode{};
@@ -102,9 +108,6 @@ class Record {
 
   [[nodiscard]] UnixTime getTimestamp() const {
     return timestamp;
-  }
-  void setTimestamp(UnixTime newTimestamp) {
-    timestamp = newTimestamp;
   }
 
   [[nodiscard]] const std::optional<U16> &getHttpResponseCode() const {
@@ -217,12 +220,80 @@ std::string toPercentageString(const F64 value) {
   return padString(toString(100.0 * value, DefaultPercentageDigits) + "%", DefaultPercentageStringLength);
 }
 
-void actionDispatcher(const std::vector<std::string> &arguments) {
+std::vector<Period> getPeriods() {
   const auto OneHour = Period{OneHourString, OneHourSeconds};
   const auto FourHours = Period{FourHoursString, FourHoursSeconds};
   const auto OneDay = Period{OneDayString, OneDaySeconds};
   const auto OneWeek = Period{OneWeekString, OneWeekSeconds};
-  std::vector<Period> periods = {OneHour, FourHours, OneDay, OneWeek};
+  const auto ThirtyDays = Period{ThirtyDaysString, ThirtyDaysSeconds};
+  const auto AllTime = Period{AllTimeString, AllTimeSeconds};
+  return {OneHour, FourHours, OneDay, OneWeek, AllTime};
+}
+
+void dumpSamples(const std::string &filename) {
+  std::ifstream file(filename);
+  std::string line;
+  while (std::getline(file, line)) {
+    const auto record = recordFromString(line);
+    std::cout << unixTimeToIsoTimestamp(record.getTimestamp());
+    if (record.getHttpResponseCode()) {
+      std::cout << ' ' << record.getHttpResponseCode().value();
+      if (record.getMicroseconds()) {
+        std::cout << ' ' << record.getMicroseconds().value();
+      }
+    }
+    std::cout << '\n';
+  }
+}
+
+void printStatistics(const std::string &filename) {
+  U64 recordCount = 0;
+  std::ifstream file(filename);
+  std::string line;
+  auto periods = getPeriods();
+  const auto currentTime = std::time(nullptr);
+  std::vector<U64> periodStart(periods.size());
+  for (std::size_t i = 0; i < periods.size(); i++) {
+    if (periods[i].duration != InfiniteSecondCount) {
+      periodStart[i] = currentTime - periods[i].duration;
+    }
+  }
+  std::vector<U64> effectiveSamples(periods.size());
+  std::vector<U64> successes(periods.size());
+  while (std::getline(file, line)) {
+    const auto record = recordFromString(line);
+    recordCount++;
+    for (std::size_t i = 0; i < periods.size(); i++) {
+      if (record.getTimestamp() >= periodStart[i]) {
+        effectiveSamples[i]++;
+        if (record.getHttpResponseCode()) {
+          const auto code = record.getHttpResponseCode().value();
+          // This skips any validation of the response code.
+          // Maybe not all 1xx, 2xx, 3xx are "successes" for some applications.
+          if (code >= FirstSuccessfulHttpStatusCode && code <= LastSuccessfulHttpStatusCode) {
+            successes[i]++;
+          }
+        }
+      }
+    }
+  }
+  std::cout << "Record count: " << recordCount << '\n';
+  for (std::size_t i = 0; i < periods.size(); i++) {
+    const auto periodSamples = periods[i].duration / (RequestIntervalInMilliseconds / MillisecondsInSecond);
+    assert(periodSamples > 0);
+    std::cout << periods[i].name << '\n';
+    if (effectiveSamples[i] == 0) {
+      std::cout << Indentation << "No samples" << '\n';
+    } else {
+      if (periods[i].duration != InfiniteSecondCount) {
+        std::cout << Indentation << "Coverage: " << toPercentageString(effectiveSamples[i] / static_cast<F64>(periodSamples)) << '\n';
+      }
+      std::cout << Indentation << "Uptime:   " << toPercentageString(successes[i] / static_cast<F64>(effectiveSamples[i])) << '\n';
+    }
+  }
+}
+
+void actionDispatcher(const std::vector<std::string> &arguments) {
   if (arguments.size() < 2) {
     printUsage();
     std::exit(EXIT_FAILURE);
@@ -230,52 +301,10 @@ void actionDispatcher(const std::vector<std::string> &arguments) {
   const auto filename = arguments[0];
   const auto action = arguments[1];
   if (action == "--dump") {
-    std::ifstream file(filename);
-    std::string line;
-    while (std::getline(file, line)) {
-      const auto record = recordFromString(line);
-      std::cout << unixTimeToIsoTimestamp(record.getTimestamp());
-      if (record.getHttpResponseCode()) {
-        std::cout << ' ' << record.getHttpResponseCode().value();
-        if (record.getMicroseconds()) {
-          std::cout << ' ' << record.getMicroseconds().value();
-        }
-      }
-      std::cout << '\n';
-    }
-  }
-  if (action == "--stats") {
-    std::ifstream file(filename);
-    std::string line;
-    std::vector<Record> records;
-    while (std::getline(file, line)) {
-      const auto record = recordFromString(line);
-      records.push_back(record);
-    }
-    std::cout << "Record count: " << std::to_string(records.size()) << '\n';
-    for (const auto &period : periods) {
-      U64 start = std::time(nullptr) - period.duration;
-      U64 periodSamples = period.duration / (RequestIntervalInMilliseconds / MillisecondsInSecond);
-      U64 effectiveSamples = 0;
-      U64 successes = 0;
-      for (auto record : records) {
-        if (record.getTimestamp() >= start) {
-          effectiveSamples++;
-          if (record.getHttpResponseCode()) {
-            const auto code = record.getHttpResponseCode().value();
-            // This skips any validation of the response code.
-            // Maybe not all 1xx, 2xx, 3xx are "successes" for some applications.
-            if (code >= FirstSuccessfulHttpStatusCode && code <= LastSuccessfulHttpStatusCode) {
-              successes++;
-            }
-          }
-        }
-      }
-      std::cout << "Coverage (" << period.name << "): " << toPercentageString(effectiveSamples / static_cast<F64>(periodSamples)) << '\n';
-      std::cout << "Uptime   (" << period.name << "): " << toPercentageString(successes / static_cast<F64>(effectiveSamples)) << '\n';
-    }
-  }
-  if (action == "--monitor") {
+    dumpSamples(filename);
+  } else if (action == "--stats") {
+    printStatistics(filename);
+  } else if (action == "--monitor") {
     if (arguments.size() != 3) {
       printUsage();
       std::exit(EXIT_FAILURE);

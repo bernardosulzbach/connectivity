@@ -73,13 +73,7 @@ struct Period {
   }
 };
 
-UnixTime unixTimeFromIsoTimestamp(const std::string &timestamp) {
-  if (timestamp.size() != TimestampSize) {
-    throw std::invalid_argument("Input does not have 20 characters and could not be converted to Unix time.");
-  }
-  std::tm timeBuffer{};
-  std::istringstream ss(timestamp);
-  ss >> std::get_time(&timeBuffer, "%Y-%m-%dT%H:%M:%S%z");
+UnixTime getEpochInUnixTime() {
   // std::mktime expects local time, so we must offset it to UTC.
   // Find the time_t of epoch, it is 0 on UTC, but timezone elsewhere.
   std::tm epoch{};
@@ -87,7 +81,17 @@ UnixTime unixTimeFromIsoTimestamp(const std::string &timestamp) {
   epoch.tm_year = FirstEpochYear;
   // Now we are ready to convert tm to time_t in UTC.
   // This "hack" was taken from https://stackoverflow.com/a/60954178/3271844.
-  return std::mktime(&timeBuffer) - std::mktime(&epoch);
+  return std::mktime(&epoch);
+}
+
+UnixTime unixTimeFromIsoTimestamp(const std::string &timestamp) {
+  if (timestamp.size() != TimestampSize) {
+    throw std::invalid_argument("Input does not have 20 characters and could not be converted to Unix time.");
+  }
+  std::tm timeBuffer{};
+  std::istringstream ss(timestamp);
+  ss >> std::get_time(&timeBuffer, "%Y-%m-%dT%H:%M:%S%z");
+  return std::mktime(&timeBuffer) - getEpochInUnixTime();
 }
 
 std::string unixTimeToIsoTimestamp(const UnixTime unixTime) {

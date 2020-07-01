@@ -284,7 +284,6 @@ void printStatistics(const std::string &filename) {
   std::cout << "Record count: " << recordCount << '\n';
   for (std::size_t i = 0; i < periods.size(); i++) {
     const auto periodSamples = periods[i].duration / (RequestIntervalInMilliseconds / MillisecondsInSecond);
-    assert(periodSamples > 0);
     std::cout << periods[i].name << '\n';
     if (effectiveSamples[i] == 0) {
       std::cout << Indentation << "No samples" << '\n';

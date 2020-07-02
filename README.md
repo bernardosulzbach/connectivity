@@ -21,7 +21,7 @@ Use: ./connectivity-monitor <FILENAME> <ACTION> [URL]
      Actions are --dump, --stats, --monitor <URL>.
 ```
 
-## Log format
+## Data format
 
 The file format is a series of lines, each line containing information about one request.
 
@@ -33,6 +33,8 @@ The file format is a series of lines, each line containing information about one
 2020-05-21T10:13:30Z 200 298180
 2020-05-21T10:14:00Z 200 292135
 ```
+
+## Statistics report format
 
 The output of the statistics looks like the following.
 
@@ -60,7 +62,7 @@ If the response code is present, it may be followed by the number of microsecond
 ## Supported platforms
 
 This program should work on any modern OS and architecture.
-However, it is only tested on Ubuntu Focal Fossa (20.04), CMake 3.12.4, Clang 7.0.0 and GCC 9.3.0.
+However, it is only tested on Focal Fossa (Ubuntu 20.04), CMake 3.12.4, Clang 7.0.0 and GCC 9.3.0.
 Please file an issue if it is not working in your platform.
 
 ## License

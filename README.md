@@ -1,6 +1,6 @@
 # Connectivity monitor
 
-[![Build Status](https://travis-ci.org/bernardosulzbach/connectivity-monitor.svg?branch=master)](https://travis-ci.org/bernardosulzbach/connectivity-monitor)
+[![Build Status](https://travis-ci.com/bernardosulzbach/connectivity-monitor.svg?branch=master)](https://travis-ci.com/bernardosulzbach/connectivity-monitor)
 
 A network connectivity monitor written in C++ 17.
 

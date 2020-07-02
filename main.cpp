@@ -199,7 +199,6 @@ void probeUrl(const std::string &filename, const std::string &url) {
   record.setMicroseconds(duration.count());
   std::ofstream file(filename, std::ios_base::app);
   record.dump(file);
-  file.flush();
 }
 
 void printUsage() {
